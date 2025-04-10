@@ -10,7 +10,7 @@
 #         var: pgbench_duration
 
      - set_fact:
-         pgbench_logfile: pgbench_read_test_sc_{{ stripe_count }}_ss_{{ stripe_size }}_full.log
+         pgbench_logfile: pgbench_read_test_{{ test_id }}_sc_{{ stripe_count }}_ss_{{ stripe_size }}_full.log
      - name: Transfer the script
        ansible.builtin.copy: src=pgbench_read_test.sh dest=/var/lib/postgresql/pgbench_read_test.sh mode='0700'
 

@@ -1,9 +1,9 @@
 # ebs-striping-test
 Test effects of EBS striping with different stripe sizes on gp3 volumes.
 
-## Tested
+## Tested read modes
 
-* pgbench --read-only, CPU*4 parallelism
+* pgbench --read-only key fetches, CPU*4 parallelism
 * pgbench index range scans, 10K row batches, CPU*2 parallelism
 * full scans, no parallelism
 

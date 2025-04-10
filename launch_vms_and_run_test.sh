@@ -11,6 +11,7 @@ mkdir logs
 
 set -u
 
+TEST_ID=run1  # needs to be lowercase, dashes allowed
 REGION="$1"  # eu-south-2 (Spain) best in EU currently according to: pg_spot_operator --list-avg-spot-savings --region ^eu
 STRIPE_COUNTS="0 2 4 8"
 STRIPE_SIZES="32 64 128"
@@ -36,10 +37,10 @@ fi
 for stripe_size in $STRIPE_SIZES_FINAL ; do
 
   # Launch a Spot VM with Postgres, place Ansible connstr in $INSTANCE_ID.ini
-  echo "Starting the test for STRIPE_COUNT=$stripe_count STRIPE_SIZE=$stripe_size CPU_MIN=$CPU_MIN RAM_MIN=$RAM_MIN in region $REGION ..."
+  echo "Starting the test for TEST_ID=$TEST_ID STRIPE_COUNT=$stripe_count STRIPE_SIZE=$stripe_size CPU_MIN=$CPU_MIN RAM_MIN=$RAM_MIN in region $REGION ..."
 
-  INSTANCE_ID="sc-${stripe_count}-ss-${stripe_size}"
-  INVENTORY_FILE="inventory-sc-${stripe_count}-ss-${stripe_size}.ini"
+  INSTANCE_ID="${TEST_ID}-sc-${stripe_count}-ss-${stripe_size}"
+  INVENTORY_FILE="${TEST_ID}-inventory-sc-${stripe_count}-ss-${stripe_size}.ini"
 
   TEST_SUCCESS=0
   for try in $(seq 1 $MAX_TRIES) ; do
@@ -74,12 +75,12 @@ for stripe_size in $STRIPE_SIZES_FINAL ; do
   echo "Using Ansible inventory file: $INVENTORY_FILE"
   cat $INVENTORY_FILE
 
-  ANSIBLE_LOG_PATH=logs/ansible_${INSTANCE_ID}.log
+  ANSIBLE_LOG_PATH=logs/${TEST_ID}_ansible_${INSTANCE_ID}.log
   echo "VM OK - running Ansible ..."
   ANSIBLE_LOG_PATH=${ANSIBLE_LOG_PATH} ansible-playbook -i $INVENTORY_FILE \
     -e stripe_count=${stripe_count} -e stripe_size=${stripe_size} \
     -e pgbench_scale=$PGBENCH_SCALE -e pgbench_duration=$PGBENCH_DURATION \
-    -e cpus=$CPU_MIN -e test_mode="$LOCAL_TEST" \
+    -e cpus=$CPU_MIN -e test_id="$TEST_ID" \
     ebs_test_playbook.yml
 
   if [ "$?" -eq 0 ]; then
