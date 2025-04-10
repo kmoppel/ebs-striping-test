@@ -7,16 +7,11 @@ CONNSTR_TESTDB="host=/var/run/postgresql dbname=postgres"
 PGBENCH_SCALE="${1:-1}"
 PGBENCH_DURATION="${2:-3}"
 CPUS="${3:-2}"
-TEST_MODE="${4:-1}"
 PGBENCH_INIT_FLAGS="--unlogged -F 80"
 PGBENCH_PROTOCOL=prepared
 
-echo "Starting pgbench - scale: $PGBENCH_SCALE, duration: $PGBENCH_DURATION, cpus: $CPUS, TEST_MODE: $TEST_MODE ..."
+echo "Starting pgbench - scale: $PGBENCH_SCALE, duration: $PGBENCH_DURATION, cpus: $CPUS ..."
 
-if [ "$TEST_MODE" -gt 0 ]; then
-  echo "Exiting due to test mode"
-  exit 0
-fi
 
 function exec_sql() {
     psql "$CONNSTR_TESTDB" -Xqc "$1"

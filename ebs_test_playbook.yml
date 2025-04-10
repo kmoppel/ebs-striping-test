@@ -15,7 +15,7 @@
        ansible.builtin.copy: src=pgbench_read_test.sh dest=/var/lib/postgresql/pgbench_read_test.sh mode='0700'
 
      - name: Run the test script
-       ansible.builtin.shell: /var/lib/postgresql/pgbench_read_test.sh {{ pgbench_scale | d(1) }} {{ pgbench_duration | d(5) }} {{ cpus | d(ansible_processor_vcpus) }} {{ test_mode | d(1) }} &> {{ pgbench_logfile }}
+       ansible.builtin.shell: /var/lib/postgresql/pgbench_read_test.sh {{ pgbench_scale | d(1) }} {{ pgbench_duration | d(5) }} {{ cpus | d(ansible_processor_vcpus) }} &> {{ pgbench_logfile }}
        args:
          executable: /bin/bash
          chdir: /var/lib/postgresql

@@ -23,3 +23,8 @@ Test effects of EBS striping with different stripe sizes on gp3 volumes.
 ./launch_vms_and_run_test.sh eu-south-2
 ```
 4. Analyze logs from the `logs` folder. pg_stat_statements output at end of the file. 
+
+## Testing on local Postgres
+
+Just change `LOCAL_TEST=0` to `LOCAL_TEST=1` in launch_vms_and_run_test.shand Ansible / pg-spot-operator won't be called
+and Postgres is expected to be at `CONNSTR_TESTDB="host=/var/run/postgresql dbname=postgres"` (pgbench_read_test.sh)
