@@ -5,14 +5,20 @@
   become_user: postgres
   tasks:
 
-#     - name: Vars
-#       debug:
-#         var: pgbench_duration
-
      - set_fact:
-         pgbench_logfile: pgbench_read_test_{{ test_id }}_sc_{{ stripe_count }}_ss_{{ stripe_size }}_full.log
+         pgbench_logfile: pgbench_read_test_{{ test_id }}_sc_{{ stripe_count }}_ss_{{ stripe_size }}.log
+         iostat_logfile: iostat_{{ test_id }}_sc_{{ stripe_count }}_ss_{{ stripe_size }}.log
+
      - name: Transfer the script
        ansible.builtin.copy: src=pgbench_read_test.sh dest=/var/lib/postgresql/pgbench_read_test.sh mode='0700'
+
+     - name: Start the system stats logger
+       ansible.builtin.shell: nohup iostat -m 60 &> /var/lib/postgresql/{{ iostat_logfile }} & echo $! >/tmp/pgbench_read_test_iostat_logger.pid
+       args:
+         executable: /bin/bash
+         chdir: /var/lib/postgresql
+       async: 7200
+       poll: 0
 
      - name: Run the test script
        ansible.builtin.shell: /var/lib/postgresql/pgbench_read_test.sh {{ pgbench_scale | d(1) }} {{ pgbench_duration | d(5) }} {{ cpus | d(ansible_processor_vcpus) }} &> {{ pgbench_logfile }}
@@ -22,9 +28,21 @@
        async: 7200
        poll: 30
 
+     - name: Kill the iostat logger process
+       ansible.builtin.shell: kill -9 $(cat /tmp/pgbench_read_test_iostat_logger.pid)
+       args:
+         executable: /bin/bash
+
      - name: Pull run logs
        ansible.builtin.fetch:
          src: /var/lib/postgresql/{{ pgbench_logfile }}
          dest: ./logs/{{ pgbench_logfile }}
+         flat: true
+         fail_on_missing: true
+
+     - name: Pull run logs - iostats
+       ansible.builtin.fetch:
+         src: /var/lib/postgresql/{{ iostat_logfile }}
+         dest: ./logs/{{ iostat_logfile }}
          flat: true
          fail_on_missing: true

@@ -55,16 +55,16 @@ for stripe_size in $STRIPE_SIZES_FINAL ; do
         --storage-min $STORAGE_MIN --selection-strategy eviction-rate \
         --stripes $stripe_count --stripe-size-kb $stripe_size \
         --connstr-only --connstr-format ansible \
-        --os-extra-packages rsync > $INVENTORY_FILE 2>> pg_spot_operator.log
+        --os-extra-packages rsync > $INVENTORY_FILE 2>> logs/pg_spot_operator.log
     else
       pg_spot_operator --instance-name $INSTANCE_ID --region $REGION \
         --cpu-min $CPU_MIN --ram-min $RAM_MIN \
         --storage-min $STORAGE_MIN --selection-strategy eviction-rate \
         --connstr-only --connstr-format ansible \
-        --os-extra-packages rsync > $INVENTORY_FILE 2>> pg_spot_operator.log
+        --os-extra-packages rsync > $INVENTORY_FILE 2>> logs/pg_spot_operator.log
     fi
     if [ $? -ne 0 ]; then
-      echo "ERROR provisioning the VM, see pg_spot_operator.log for details"
+      echo "ERROR provisioning the VM, see logs/pg_spot_operator.log for details"
       continue
     fi
   else
@@ -85,18 +85,20 @@ for stripe_size in $STRIPE_SIZES_FINAL ; do
 
   if [ "$?" -eq 0 ]; then
     echo "Ansible playbook run OK"
+    TEST_SUCCESS=1
     if [ "$LOCAL_TEST" -eq 0 ]; then
       echo "Shutting down the instance ..."
-      echo "pg_spot_operator --region $REGION --instance-name $INSTANCE_ID --teardown &>> pg_spot_operator_teardown.log"
-      TEST_SUCCESS=1
-      pg_spot_operator --region $REGION --instance-name $INSTANCE_ID --teardown &>> pg_spot_operator_teardown.log
+      echo "pg_spot_operator --region $REGION --instance-name $INSTANCE_ID --teardown &>> logs/pg_spot_operator_teardown.log"
+      pg_spot_operator --region $REGION --instance-name $INSTANCE_ID --teardown &>> logs/pg_spot_operator_teardown.log
       if [ "$?" -ne 0 ]; then
-        echo "WARNING: nonzero pg_spot_operator --teardown result, check the pg_spot_operator_teardown.log"
+        echo "WARNING: nonzero pg_spot_operator --teardown result, check the logs/pg_spot_operator_teardown.log"
       fi
       break
     fi
   else
     echo "ERROR: Ansible failed - check the log at $ANSIBLE_LOG_PATH"
+    echo "sleep 60 before retry"
+    sleep 60
     continue
   fi
 
