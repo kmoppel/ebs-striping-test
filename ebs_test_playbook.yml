@@ -7,13 +7,13 @@
 
      - set_fact:
          pgbench_logfile: pgbench_read_test_{{ test_id }}_sc_{{ stripe_count }}_ss_{{ stripe_size }}.log
-         iostat_logfile: iostat_{{ test_id }}_sc_{{ stripe_count }}_ss_{{ stripe_size }}.log
+         dstat_logfile: iostat_{{ test_id }}_sc_{{ stripe_count }}_ss_{{ stripe_size }}.log
 
      - name: Transfer the script
        ansible.builtin.copy: src=pgbench_read_test.sh dest=/var/lib/postgresql/pgbench_read_test.sh mode='0700'
 
      - name: Start the system stats logger
-       ansible.builtin.shell: nohup iostat -m 60 &> /var/lib/postgresql/{{ iostat_logfile }} & echo $! >/tmp/pgbench_read_test_iostat_logger.pid
+       ansible.builtin.shell: nohup dstat -tcd --io 60 &> /var/lib/postgresql/{{ dstat_logfile }} & echo $! >/tmp/pgbench_read_test_iostat_logger.pid
        args:
          executable: /bin/bash
          chdir: /var/lib/postgresql
@@ -42,7 +42,7 @@
 
      - name: Pull run logs - iostats
        ansible.builtin.fetch:
-         src: /var/lib/postgresql/{{ iostat_logfile }}
-         dest: ./logs/{{ iostat_logfile }}
+         src: /var/lib/postgresql/{{ dstat_logfile }}
+         dest: ./logs/{{ dstat_logfile }}
          flat: true
          fail_on_missing: true

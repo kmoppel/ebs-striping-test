@@ -55,13 +55,13 @@ for stripe_size in $STRIPE_SIZES_FINAL ; do
         --storage-min $STORAGE_MIN --selection-strategy eviction-rate \
         --stripes $stripe_count --stripe-size-kb $stripe_size \
         --connstr-only --connstr-format ansible \
-        --os-extra-packages rsync > $INVENTORY_FILE 2>> logs/pg_spot_operator.log
+        --os-extra-packages rsync,dstat > $INVENTORY_FILE 2>> logs/pg_spot_operator.log
     else
       pg_spot_operator --instance-name $INSTANCE_ID --region $REGION \
         --cpu-min $CPU_MIN --ram-min $RAM_MIN \
         --storage-min $STORAGE_MIN --selection-strategy eviction-rate \
         --connstr-only --connstr-format ansible \
-        --os-extra-packages rsync > $INVENTORY_FILE 2>> logs/pg_spot_operator.log
+        --os-extra-packages rsync,dstat > $INVENTORY_FILE 2>> logs/pg_spot_operator.log
     fi
     if [ $? -ne 0 ]; then
       echo "ERROR provisioning the VM, see logs/pg_spot_operator.log for details"
