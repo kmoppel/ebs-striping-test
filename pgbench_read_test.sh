@@ -2,13 +2,14 @@
 
 set -e
 
-CONNSTR_TESTDB="host=/var/run/postgresql dbname=postgres"
+CONNSTR_TESTDB="host=/var/run/postgresql dbname=bench"
 
 PGBENCH_SCALE="${1:-1}"
 PGBENCH_DURATION="${2:-3}"
 CPUS="${3:-2}"
 PGBENCH_INIT_FLAGS="--unlogged -F 80"
 PGBENCH_PROTOCOL=prepared
+FULL_SCANS_TO_RUN=3
 
 echo "Starting pgbench - scale: $PGBENCH_SCALE, duration: $PGBENCH_DURATION, cpus: $CPUS ..."
 date
@@ -60,23 +61,23 @@ echo "Reseting pg_stat_statements..."
 exec_sql "$SQL_PGSS_RESET" >/dev/null
 
 echo -e "\nRunning the key read test"
-echo -e "pgbench --random-seed 666 -M $PGBENCH_PROTOCOL -c $PGBENCH_CLIENTS -T $PGBENCH_DURATION -f- \"$CONNSTR_TESTDB\"\n"
+echo -e "pgbench --random-seed 666 -M $PGBENCH_PROTOCOL -c $((CPUS*4)) -T $PGBENCH_DURATION -f- \"$CONNSTR_TESTDB\"\n"
 pgbench --random-seed 666 -S -M $PGBENCH_PROTOCOL -c $((CPUS*4)) -T $PGBENCH_DURATION "$CONNSTR_TESTDB"
 
 echo "sleep 120"
 sleep 120
 
 echo -e "\nRunning the batch read test"
-echo -e "echo '$BATCH_READ' | pgbench -f- --random-seed 666 -M $PGBENCH_PROTOCOL -c $PGBENCH_CLIENTS -T $PGBENCH_DURATION \"$CONNSTR_TESTDB\"\n"
-echo "$BATCH_READ" | pgbench -f- --random-seed 666 -s $PGBENCH_SCALE -M $PGBENCH_PROTOCOL -c $((CPUS*2)) -T $PGBENCH_DURATION "$CONNSTR_TESTDB"
+echo -e "echo '$BATCH_READ' | pgbench -f- -n --random-seed 666 -M $PGBENCH_PROTOCOL -c $((CPUS*2)) -T $PGBENCH_DURATION \"$CONNSTR_TESTDB\"\n"
+echo "$BATCH_READ" | pgbench -f- -n --random-seed 666 -s $PGBENCH_SCALE -M $PGBENCH_PROTOCOL -c $((CPUS*2)) -T $PGBENCH_DURATION "$CONNSTR_TESTDB"
 
 echo "sleep 120"
 sleep 120
 
 echo -e "\nRunning the full scan read test"
 date
-echo -e "echo '$FULL_SCAN' | pgbench -f- -c 1 -t 2 \"$CONNSTR_TESTDB\"\n"
-echo "$FULL_SCAN" | pgbench -f- -c 1 -t 2 "$CONNSTR_TESTDB"
+echo -e "echo '$FULL_SCAN' | pgbench -f- -n -c 1 -t $FULL_SCANS_TO_RUN \"$CONNSTR_TESTDB\"\n"
+echo "$FULL_SCAN" | pgbench -f- -n -c 1 -t $FULL_SCANS_TO_RUN "$CONNSTR_TESTDB"
 date
 
 echo -e "\npg_stat_statements results:"
