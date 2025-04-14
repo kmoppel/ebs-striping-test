@@ -11,7 +11,7 @@ PGBENCH_INIT_FLAGS="--unlogged -F 80"
 PGBENCH_PROTOCOL=prepared
 
 echo "Starting pgbench - scale: $PGBENCH_SCALE, duration: $PGBENCH_DURATION, cpus: $CPUS ..."
-
+date
 
 function exec_sql() {
     psql "$CONNSTR_TESTDB" -Xqc "$1"
@@ -29,7 +29,7 @@ FULL_SCAN='SELECT count(*) FROM pgbench_accounts WHERE abalance NOTNULL'
 
 PGSS_RESULTS=$(cat <<"EOF"
 select
-  mean_exec_time::numeric(7,3), stddev_exec_time::numeric(7,3), calls, rows,
+  mean_exec_time::numeric(9,3), stddev_exec_time::numeric(9,3), calls, rows,
   (100::numeric * shared_blks_hit / (shared_blks_hit + shared_blks_read))::numeric(7,1) as sb_hit_pct,
   query
 from pg_stat_statements
@@ -45,14 +45,16 @@ echo -e "\nEnsuring pg_stat_statements extension on test instance ..."
 exec_sql "$SQL_PGSS_SETUP"
 
 echo -e "\nCreating test data using pgbench ..."
+date
 echo "pgbench -i -q $PGBENCH_INIT_FLAGS -s $PGBENCH_SCALE"
 pgbench -i -q $PGBENCH_INIT_FLAGS -s $PGBENCH_SCALE
+date
 
 DBSIZE=`psql "$CONNSTR_TESTDB" -XAtqc "select pg_size_pretty(pg_database_size(current_database()))"`
 echo -e "\nDB size = $DBSIZE"
 
 TBLSIZE=`psql "$CONNSTR_TESTDB" -XAtqc "select pg_size_pretty(pg_table_size('pgbench_accounts'))"`
-echo -e "\nDB size = $DBSIZE"
+echo -e "\npgbench_accounts size = $TBLSIZE"
 
 echo "Reseting pg_stat_statements..."
 exec_sql "$SQL_PGSS_RESET" >/dev/null
@@ -61,13 +63,21 @@ echo -e "\nRunning the key read test"
 echo -e "pgbench --random-seed 666 -M $PGBENCH_PROTOCOL -c $PGBENCH_CLIENTS -T $PGBENCH_DURATION -f- \"$CONNSTR_TESTDB\"\n"
 pgbench --random-seed 666 -S -M $PGBENCH_PROTOCOL -c $((CPUS*4)) -T $PGBENCH_DURATION "$CONNSTR_TESTDB"
 
+echo "sleep 120"
+sleep 120
+
 echo -e "\nRunning the batch read test"
 echo -e "echo '$BATCH_READ' | pgbench -f- --random-seed 666 -M $PGBENCH_PROTOCOL -c $PGBENCH_CLIENTS -T $PGBENCH_DURATION \"$CONNSTR_TESTDB\"\n"
 echo "$BATCH_READ" | pgbench -f- --random-seed 666 -s $PGBENCH_SCALE -M $PGBENCH_PROTOCOL -c $((CPUS*2)) -T $PGBENCH_DURATION "$CONNSTR_TESTDB"
 
+echo "sleep 120"
+sleep 120
+
 echo -e "\nRunning the full scan read test"
-echo -e "echo '$FULL_SCAN' | pgbench -f- -c 1 -t 3 \"$CONNSTR_TESTDB\"\n"
-echo "$FULL_SCAN" | pgbench -f- -c 1 -t 3 "$CONNSTR_TESTDB"
+date
+echo -e "echo '$FULL_SCAN' | pgbench -f- -c 1 -t 2 \"$CONNSTR_TESTDB\"\n"
+echo "$FULL_SCAN" | pgbench -f- -c 1 -t 2 "$CONNSTR_TESTDB"
+date
 
 echo -e "\npg_stat_statements results:"
 exec_sql "$PGSS_RESULTS"

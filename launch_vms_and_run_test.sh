@@ -7,22 +7,27 @@ if [ -z "$1" ]; then
   exit 1
 fi
 
-mkdir logs
+if [ ! -d ./logs ]; then
+  mkdir logs
+fi
 
 set -u
 
-TEST_ID=run1  # needs to be lowercase, dashes allowed
+TEST_ID=m6idn-xlarge  # only lowercase and dashes allowed
 REGION="$1"  # eu-south-2 (Spain) best in EU currently according to: pg_spot_operator --list-avg-spot-savings --region ^eu
-STRIPE_COUNTS="0 2 4 8"
-STRIPE_SIZES="32 64 128"
+STRIPE_COUNTS="0 2 4 8 16"
+STRIPE_SIZES="8 16 32 64 128"
 PGBENCH_DURATION=600
-STORAGE_MIN=200  # GB
-PGBENCH_SCALE=4000
-CPU_MIN=4
-RAM_MIN=4
+STORAGE_MIN=500  # GB
+PGBENCH_SCALE=8000  # 141 GB DB size, with FF80
+CPU_MIN=4  # relevant if INSTANCE_TYPE not set
+RAM_MIN=4  # relevant if INSTANCE_TYPE not set
+# https://instances.vantage.sh/aws/ec2/c6g.xlarge?region=eu-south-2&os=linux&cost_duration=hourly&reserved_term=Standard.noUpfront
+INSTANCE_TYPE=m6idn.xlarge  # 4/16, 100K max iops
+# https://instances.vantage.sh/aws/ec2/m6idn.xlarge?region=eu-south-2&os=linux&cost_duration=hourly&reserved_term=Standard.noUpfront
 
 LOCAL_TEST=0  # Uses postgres@localhost as remote host
-MAX_TRIES=3  # Spots VMs can disappear ...
+MAX_TRIES=3  # Spot VMs can disappear ...
 
 T1=$(date +%s)
 
@@ -41,8 +46,11 @@ for stripe_size in $STRIPE_SIZES_FINAL ; do
 
   INSTANCE_ID="${TEST_ID}-sc-${stripe_count}-ss-${stripe_size}"
   INVENTORY_FILE="${TEST_ID}-inventory-sc-${stripe_count}-ss-${stripe_size}.ini"
-
+  OPERATOR_LOG=${TEST_ID}_pg_spot_operator_sc_${stripe_count}_ss_${stripe_size}.log
   TEST_SUCCESS=0
+  echo "pg_spot_operator --instance-name=$INSTANCE_ID"
+  echo "pg_spot_operator log: logs/$OPERATOR_LOG"
+
   for try in $(seq 1 $MAX_TRIES) ; do
 
   if [ "$LOCAL_TEST" -eq 0 ]; then
@@ -50,21 +58,38 @@ for stripe_size in $STRIPE_SIZES_FINAL ; do
     # Details: https://github.com/pg-spot-ops/pg-spot-operator
 
     if [ "$stripe_count" -gt 0 ]; then
-      pg_spot_operator --instance-name $INSTANCE_ID --region $REGION \
-        --cpu-min $CPU_MIN --ram-min $RAM_MIN \
-        --storage-min $STORAGE_MIN --selection-strategy eviction-rate \
-        --stripes $stripe_count --stripe-size-kb $stripe_size \
-        --connstr-only --connstr-format ansible \
-        --os-extra-packages rsync,dstat > $INVENTORY_FILE 2>> logs/pg_spot_operator.log
+      if [ -n "$INSTANCE_TYPE" ]; then
+        pg_spot_operator --instance-name $INSTANCE_ID --region $REGION \
+          --instance-type $INSTANCE_TYPE \
+          --storage-min $STORAGE_MIN --selection-strategy eviction-rate \
+          --stripes $stripe_count --stripe-size-kb $stripe_size \
+          --connstr-only --connstr-format ansible \
+          --os-extra-packages rsync,dstat > $INVENTORY_FILE 2>> logs/$OPERATOR_LOG
+      else
+        pg_spot_operator --instance-name $INSTANCE_ID --region $REGION \
+          --cpu-min $CPU_MIN --ram-min $RAM_MIN \
+          --storage-min $STORAGE_MIN --selection-strategy eviction-rate \
+          --stripes $stripe_count --stripe-size-kb $stripe_size \
+          --connstr-only --connstr-format ansible \
+          --os-extra-packages rsync,dstat > $INVENTORY_FILE 2>> logs/$OPERATOR_LOG
+      fi
     else
-      pg_spot_operator --instance-name $INSTANCE_ID --region $REGION \
-        --cpu-min $CPU_MIN --ram-min $RAM_MIN \
-        --storage-min $STORAGE_MIN --selection-strategy eviction-rate \
-        --connstr-only --connstr-format ansible \
-        --os-extra-packages rsync,dstat > $INVENTORY_FILE 2>> logs/pg_spot_operator.log
+      if [ -n "$INSTANCE_TYPE" ]; then
+        pg_spot_operator --instance-name $INSTANCE_ID --region $REGION \
+          --instance-type $INSTANCE_TYPE \
+          --storage-min $STORAGE_MIN --selection-strategy eviction-rate \
+          --connstr-only --connstr-format ansible \
+          --os-extra-packages rsync,dstat > $INVENTORY_FILE 2>> logs/$OPERATOR_LOG
+      else
+        pg_spot_operator --instance-name $INSTANCE_ID --region $REGION \
+          --cpu-min $CPU_MIN --ram-min $RAM_MIN \
+          --storage-min $STORAGE_MIN --selection-strategy eviction-rate \
+          --connstr-only --connstr-format ansible \
+          --os-extra-packages rsync,dstat > $INVENTORY_FILE 2>> logs/$OPERATOR_LOG
+      fi
     fi
     if [ $? -ne 0 ]; then
-      echo "ERROR provisioning the VM, see logs/pg_spot_operator.log for details"
+      echo "ERROR provisioning the VM, see logs/${OPERATOR_LOG} for details"
       continue
     fi
   else
@@ -89,9 +114,9 @@ for stripe_size in $STRIPE_SIZES_FINAL ; do
     if [ "$LOCAL_TEST" -eq 0 ]; then
       echo "Shutting down the instance ..."
       echo "pg_spot_operator --region $REGION --instance-name $INSTANCE_ID --teardown &>> logs/pg_spot_operator_teardown.log"
-      pg_spot_operator --region $REGION --instance-name $INSTANCE_ID --teardown &>> logs/pg_spot_operator_teardown.log
+      pg_spot_operator --region $REGION --instance-name $INSTANCE_ID --teardown &>> logs/$OPERATOR_LOG
       if [ "$?" -ne 0 ]; then
-        echo "WARNING: nonzero pg_spot_operator --teardown result, check the logs/pg_spot_operator_teardown.log"
+        echo "WARNING: nonzero pg_spot_operator --teardown result, check the logs/${OPERATOR_LOG}.log"
       fi
       break
     fi
