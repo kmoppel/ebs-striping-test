@@ -15,15 +15,17 @@ set -u
 
 TEST_ID=m6idn-xlarge  # only lowercase and dashes allowed
 REGION="$1"  # eu-south-2 (Spain) best in EU currently according to: pg_spot_operator --list-avg-spot-savings --region ^eu
-STRIPE_COUNTS="0 2 4 8 16"
+STRIPE_COUNTS="1 2 4 8 16"
 STRIPE_SIZES="8 16 32 64 128"
 PGBENCH_DURATION=600
 STORAGE_MIN=500  # GB
-PGBENCH_SCALE=8000  # 141 GB DB size, with FF80
+PGBENCH_SCALE=8000  # 141 GB DB size, with FF80. Aiming for ~10% RAM-to-disk ratio
 CPU_MIN=4  # relevant if INSTANCE_TYPE not set
 RAM_MIN=4  # relevant if INSTANCE_TYPE not set
+# Resolves to something like:
 # https://instances.vantage.sh/aws/ec2/c6g.xlarge?region=eu-south-2&os=linux&cost_duration=hourly&reserved_term=Standard.noUpfront
-INSTANCE_TYPE=m6idn.xlarge  # 4/16, 100K max iops
+INSTANCE_TYPE=m6idn.xlarge
+# Better to use something like m6idn.xlarge with max 100K IOPS though
 # https://instances.vantage.sh/aws/ec2/m6idn.xlarge?region=eu-south-2&os=linux&cost_duration=hourly&reserved_term=Standard.noUpfront
 
 LOCAL_TEST=0  # Uses postgres@localhost as remote host
@@ -33,7 +35,7 @@ T1=$(date +%s)
 
 for stripe_count in $STRIPE_COUNTS ; do
 
-if [ "$stripe_count" -eq 0 ]; then
+if [ "$stripe_count" -eq 1 ]; then
   STRIPE_SIZES_FINAL=64  # No effect for a single disk, just run 1 test
 else
   STRIPE_SIZES_FINAL="$STRIPE_SIZES"
@@ -57,36 +59,20 @@ for stripe_size in $STRIPE_SIZES_FINAL ; do
     # Prerequisite: pipx install --include-deps ansible pg_spot_operator
     # Details: https://github.com/pg-spot-ops/pg-spot-operator
 
-    if [ "$stripe_count" -gt 0 ]; then
-      if [ -n "$INSTANCE_TYPE" ]; then
+    if [ -n "$INSTANCE_TYPE" ]; then
         pg_spot_operator --instance-name $INSTANCE_ID --region $REGION \
           --instance-type $INSTANCE_TYPE \
           --storage-min $STORAGE_MIN --selection-strategy eviction-rate \
           --stripes $stripe_count --stripe-size-kb $stripe_size \
           --connstr-only --connstr-format ansible \
           --os-extra-packages rsync,dstat > $INVENTORY_FILE 2>> logs/$OPERATOR_LOG
-      else
-        pg_spot_operator --instance-name $INSTANCE_ID --region $REGION \
-          --cpu-min $CPU_MIN --ram-min $RAM_MIN \
-          --storage-min $STORAGE_MIN --selection-strategy eviction-rate \
-          --stripes $stripe_count --stripe-size-kb $stripe_size \
-          --connstr-only --connstr-format ansible \
-          --os-extra-packages rsync,dstat > $INVENTORY_FILE 2>> logs/$OPERATOR_LOG
-      fi
     else
-      if [ -n "$INSTANCE_TYPE" ]; then
-        pg_spot_operator --instance-name $INSTANCE_ID --region $REGION \
-          --instance-type $INSTANCE_TYPE \
-          --storage-min $STORAGE_MIN --selection-strategy eviction-rate \
-          --connstr-only --connstr-format ansible \
-          --os-extra-packages rsync,dstat > $INVENTORY_FILE 2>> logs/$OPERATOR_LOG
-      else
         pg_spot_operator --instance-name $INSTANCE_ID --region $REGION \
           --cpu-min $CPU_MIN --ram-min $RAM_MIN \
           --storage-min $STORAGE_MIN --selection-strategy eviction-rate \
+          --stripes $stripe_count --stripe-size-kb $stripe_size \
           --connstr-only --connstr-format ansible \
           --os-extra-packages rsync,dstat > $INVENTORY_FILE 2>> logs/$OPERATOR_LOG
-      fi
     fi
     if [ $? -ne 0 ]; then
       echo "ERROR provisioning the VM, see logs/${OPERATOR_LOG} for details"

@@ -2,7 +2,7 @@
 
 set -e
 
-CONNSTR_TESTDB="host=/var/run/postgresql dbname=bench"
+CONNSTR_TESTDB="host=/var/run/postgresql dbname=postgres"
 
 PGBENCH_SCALE="${1:-1}"
 PGBENCH_DURATION="${2:-3}"
