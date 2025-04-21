@@ -27,13 +27,24 @@ RAM_MIN=4  # relevant if INSTANCE_TYPE not set
 INSTANCE_TYPE=m6idn.xlarge
 # Better to use something like m6idn.xlarge with max 100K IOPS though
 # https://instances.vantage.sh/aws/ec2/m6idn.xlarge?region=eu-south-2&os=linux&cost_duration=hourly&reserved_term=Standard.noUpfront
+# If provisioned IOPS set, i.e. >3K, striping will not be used
+VOLUME_TYPE=io2  # https://docs.aws.amazon.com/ebs/latest/userguide/ebs-volume-types.html
+VOLUME_IOPS=40000  # gp3 default is 3000
 
 LOCAL_TEST=0  # Uses postgres@localhost as remote host
 MAX_TRIES=3  # Spot VMs can disappear ...
+CREATE_VM_ONLY=0  # Exit after VM create
 
 T1=$(date +%s)
 
-for stripe_count in $STRIPE_COUNTS ; do
+# Not striping if provisioned IOPS set
+if [ "$VOLUME_IOPS" -gt 3000 ]; then
+  STRIPE_COUNTS_FINAL=1
+else
+  STRIPE_COUNTS_FINAL="$STRIPE_COUNTS"
+fi
+
+for stripe_count in $STRIPE_COUNTS_FINAL ; do
 
 if [ "$stripe_count" -eq 1 ]; then
   STRIPE_SIZES_FINAL=64  # No effect for a single disk, just run 1 test
@@ -44,11 +55,11 @@ fi
 for stripe_size in $STRIPE_SIZES_FINAL ; do
 
   # Launch a Spot VM with Postgres, place Ansible connstr in $INSTANCE_ID.ini
-  echo "Starting the test for TEST_ID=$TEST_ID STRIPE_COUNT=$stripe_count STRIPE_SIZE=$stripe_size CPU_MIN=$CPU_MIN RAM_MIN=$RAM_MIN in region $REGION ..."
+  echo "Starting the test for TEST_ID=$TEST_ID STRIPE_COUNT=$stripe_count STRIPE_SIZE=$stripe_size CPU_MIN=$CPU_MIN RAM_MIN=$RAM_MIN VOLUME_IOPS=$VOLUME_IOPS in region $REGION ..."
 
-  INSTANCE_ID="${TEST_ID}-sc-${stripe_count}-ss-${stripe_size}"
-  INVENTORY_FILE="${TEST_ID}-inventory-sc-${stripe_count}-ss-${stripe_size}.ini"
-  OPERATOR_LOG=${TEST_ID}_pg_spot_operator_sc_${stripe_count}_ss_${stripe_size}.log
+  INSTANCE_ID="${TEST_ID}-sc-${stripe_count}-ss-${stripe_size}-voltype-${VOLUME_TYPE}-iops-${VOLUME_IOPS}"
+  INVENTORY_FILE="${TEST_ID}-inventory-sc-${stripe_count}-ss-${stripe_size}-voltype-${VOLUME_TYPE}-iops-${VOLUME_IOPS}.ini"
+  OPERATOR_LOG=${TEST_ID}_pg_spot_operator_sc_${stripe_count}_ss_${stripe_size}_voltype_${VOLUME_TYPE}_iops_${VOLUME_IOPS}.log
   TEST_SUCCESS=0
   echo "pg_spot_operator --instance-name=$INSTANCE_ID"
   echo "pg_spot_operator log: logs/$OPERATOR_LOG"
@@ -59,18 +70,20 @@ for stripe_size in $STRIPE_SIZES_FINAL ; do
     # Prerequisite: pipx install --include-deps ansible pg_spot_operator
     # Details: https://github.com/pg-spot-ops/pg-spot-operator
 
-    if [ -n "$INSTANCE_TYPE" ]; then
+    if [ "$VOLUME_IOPS" -eq 3000 ]; then
         pg_spot_operator --instance-name $INSTANCE_ID --region $REGION \
           --instance-type $INSTANCE_TYPE \
+          --cpu-min $CPU_MIN --ram-min $RAM_MIN \
           --storage-min $STORAGE_MIN --selection-strategy eviction-rate \
           --stripes $stripe_count --stripe-size-kb $stripe_size \
           --connstr-only --connstr-format ansible \
           --os-extra-packages rsync,dstat > $INVENTORY_FILE 2>> logs/$OPERATOR_LOG
     else
         pg_spot_operator --instance-name $INSTANCE_ID --region $REGION \
+          --instance-type $INSTANCE_TYPE \
           --cpu-min $CPU_MIN --ram-min $RAM_MIN \
           --storage-min $STORAGE_MIN --selection-strategy eviction-rate \
-          --stripes $stripe_count --stripe-size-kb $stripe_size \
+          --volume-iops $VOLUME_IOPS --volume-type $VOLUME_TYPE \
           --connstr-only --connstr-format ansible \
           --os-extra-packages rsync,dstat > $INVENTORY_FILE 2>> logs/$OPERATOR_LOG
     fi
@@ -85,6 +98,11 @@ for stripe_size in $STRIPE_SIZES_FINAL ; do
 
   echo "Using Ansible inventory file: $INVENTORY_FILE"
   cat $INVENTORY_FILE
+
+  if [ "$CREATE_VM_ONLY" -gt 0 ]; then
+    echo "Exiting due to CREATE_VM_ONLY"
+    exit 0
+  fi
 
   ANSIBLE_LOG_PATH=logs/${TEST_ID}_ansible_${INSTANCE_ID}.log
   echo "VM OK - running Ansible ..."
